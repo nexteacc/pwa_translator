@@ -15,6 +15,27 @@ app.get("/", (req: Request, res: Response) => {
   res.send("Server is running. Welcome to the API!");
 });
 
+// 自定义函数来提取 result 字段
+function formatChunk(chunk: Buffer): string | null {
+  try {
+    const jsonData = JSON.parse(chunk.toString());
+
+    // 检查是否存在 'outputs' 类型的块
+    if (jsonData.type === "chunk" && jsonData.value.type === "outputs") {
+      const outputs = jsonData.value.values;
+      if (outputs && outputs.result) {
+        return outputs.result;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("解析块失败", error);
+    return null;
+  }
+}
+
+// 为 /proxy 定义 POST 路由
 app.post("/proxy", async (req: Request, res: Response) => {
   try {
     const apiUrl =
@@ -33,18 +54,28 @@ app.post("/proxy", async (req: Request, res: Response) => {
       responseType: "stream", // 指定响应类型为流
     });
 
-    // 设置响应头
+    // 设置响应头，使用分块传输编码
     res.setHeader("Content-Type", "application/json");
+    res.setHeader("Transfer-Encoding", "chunked");
 
-    // 逐块读取数据并发送到客户端
+    // 监听数据块
     response.data.on("data", (chunk: Buffer) => {
-      const formattedChunk = formatChunk(chunk);
-      res.write(formattedChunk);
+      const result = formatChunk(chunk);
+      if (result) {
+        // 将 result 作为 JSON 格式发送给客户端
+        res.write(JSON.stringify({ result }) + "\n");
+      }
     });
 
     // 在流结束时关闭响应
     response.data.on("end", () => {
       res.end();
+    });
+
+    // 处理流错误
+    response.data.on("error", (err: any) => {
+      console.error("流错误:", err);
+      res.status(500).json({ message: "流处理错误" });
     });
   } catch (error) {
     if (axios.isAxiosError(error) && error.response) {
@@ -52,36 +83,10 @@ app.post("/proxy", async (req: Request, res: Response) => {
       res.status(error.response.status).json(error.response.data);
     } else {
       // 处理其他错误
-      res.status(500).json({ message: "Internal Server Error" });
+      res.status(500).json({ message: "内部服务器错误" });
     }
   }
 });
-
-// 自定义函数来格式化数据块
-function formatChunk(chunk: Buffer): string {
-  try {
-    const jsonData = JSON.parse(chunk.toString());
-
-    // 提取所需的部分
-    if (jsonData.type === "prompt" || jsonData.type === "chunk") {
-      const outputData = jsonData.output || jsonData.value;
-
-      if (outputData) {
-        if (outputData.result) {
-          return JSON.stringify({ result: outputData.result });
-        }
-        if (outputData.values) {
-          return JSON.stringify({ values: outputData.values });
-        }
-      }
-    }
-
-    return JSON.stringify({});
-  } catch (error) {
-    console.error("Failed to parse chunk", error);
-    return JSON.stringify({});
-  }
-}
 
 // 启动服务器
 app.listen(PORT, () => {
