@@ -16,7 +16,7 @@ app.get("/", (req: Request, res: Response) => {
 });
 
 // 自定义函数来提取 result 字段
-function formatChunk(chunk: Buffer): string | null {
+function formatChunk(chunk: Buffer): { result?: string } {
   try {
     const jsonData = JSON.parse(chunk.toString());
 
@@ -24,14 +24,14 @@ function formatChunk(chunk: Buffer): string | null {
     if (jsonData.type === "chunk" && jsonData.value.type === "outputs") {
       const outputs = jsonData.value.values;
       if (outputs && outputs.result) {
-        return outputs.result;
+        return { result: outputs.result };
       }
     }
 
-    return null;
+    return {};
   } catch (error) {
     console.error("解析块失败", error);
-    return null;
+    return {};
   }
 }
 
@@ -60,10 +60,10 @@ app.post("/proxy", async (req: Request, res: Response) => {
 
     // 监听数据块
     response.data.on("data", (chunk: Buffer) => {
-      const result = formatChunk(chunk);
-      if (result) {
+      const parsed = formatChunk(chunk);
+      if (parsed.result) {
         // 将 result 作为 JSON 格式发送给客户端
-        res.write(JSON.stringify({ result }) + "\n");
+        res.write(JSON.stringify({ result: parsed.result }) + "\n");
       }
     });
 
