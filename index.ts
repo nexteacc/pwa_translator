@@ -24,16 +24,28 @@ app.post("/proxy", async (req: Request, res: Response) => {
     // 获取请求体中的数据
     const data = req.body;
 
-    // 使用 axios 转发请求
+    // 使用 axios 发起请求并获取响应流
     const response = await axios.post(apiUrl, data, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
+      responseType: "stream", // 指定响应类型为流
     });
 
-    // 将 API 响应发送回客户端
-    res.status(response.status).json(response.data);
+    // 设置响应头
+    res.setHeader("Content-Type", "application/json");
+
+    // 逐块读取数据并发送到客户端
+    response.data.on("data", (chunk: Buffer) => {
+      const formattedChunk = formatChunk(chunk);
+      res.write(formattedChunk);
+    });
+
+    // 在流结束时关闭响应
+    response.data.on("end", () => {
+      res.end();
+    });
   } catch (error) {
     if (axios.isAxiosError(error) && error.response) {
       // 处理 API 错误响应
@@ -49,3 +61,13 @@ app.post("/proxy", async (req: Request, res: Response) => {
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
+// 自定义函数来格式化数据块
+function formatChunk(chunk: Buffer): string {
+  // 解析 JSON 数据块，做一些格式化操作
+  const jsonData = JSON.parse(chunk.toString());
+
+  // 假设我们对数据进行一些处理
+  // 这里可以根据需要进行更复杂的处理
+  return JSON.stringify(jsonData);
+}
