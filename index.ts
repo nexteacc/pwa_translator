@@ -57,17 +57,33 @@ app.post("/proxy", async (req: Request, res: Response) => {
   }
 });
 
+// 自定义函数来格式化数据块
+function formatChunk(chunk: Buffer): string {
+  try {
+    const jsonData = JSON.parse(chunk.toString());
+
+    // 提取所需的部分
+    if (jsonData.type === "prompt" || jsonData.type === "chunk") {
+      const outputData = jsonData.output || jsonData.value;
+
+      if (outputData) {
+        if (outputData.result) {
+          return JSON.stringify({ result: outputData.result });
+        }
+        if (outputData.values) {
+          return JSON.stringify({ values: outputData.values });
+        }
+      }
+    }
+
+    return JSON.stringify({});
+  } catch (error) {
+    console.error("Failed to parse chunk", error);
+    return JSON.stringify({});
+  }
+}
+
 // 启动服务器
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
-
-// 自定义函数来格式化数据块
-function formatChunk(chunk: Buffer): string {
-  // 解析 JSON 数据块，做一些格式化操作
-  const jsonData = JSON.parse(chunk.toString());
-
-  // 假设我们对数据进行一些处理
-  // 这里可以根据需要进行更复杂的处理
-  return JSON.stringify(jsonData);
-}
